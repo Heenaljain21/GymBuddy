@@ -5,7 +5,7 @@ days calculation for memberships, and range helpers.
 """
 
 from __future__ import annotations
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, time, timedelta
 from typing import Optional, Tuple
 try:
     from zoneinfo import ZoneInfo
@@ -47,11 +47,16 @@ def format_time_display(dt: Optional[datetime | str]) -> str:
     if dt is None:
         return "-"
     if isinstance(dt, str):
+        raw = dt.strip()
         try:
-            # try parsing iso
-            dt = datetime.fromisoformat(dt.replace("Z", "+00:00"))
-        except Exception:
-            return dt
+            # Full ISO timestamp (e.g. 2026-11-18T07:30:00+05:30)
+            dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            try:
+                # Postgres TIME column (e.g. 07:30:00 or 07:30:00.123456)
+                dt = time.fromisoformat(raw)
+            except ValueError:
+                return raw
     return dt.strftime("%I:%M %p")
 
 

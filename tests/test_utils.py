@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.helpers import format_currency, format_phone, generate_whatsapp_link, clean_phone_for_whatsapp
 from utils.validators import validate_phone, validate_email, validate_member_form
-from utils.date_utils import days_remaining, days_since, format_date_display
+from utils.date_utils import days_remaining, days_since, format_date_display, format_time_display, get_ist_today
 
 
 class TestUtils(unittest.TestCase):
@@ -39,7 +39,7 @@ class TestUtils(unittest.TestCase):
         self.assertEqual("https://wa.me/919876543210?text=Hello%20Gym%20Buddy%21", link)
 
     def test_date_utilities(self):
-        today = date.today()
+        today = get_ist_today()
         future = today + timedelta(days=10)
         past = today - timedelta(days=15)
 
@@ -47,6 +47,11 @@ class TestUtils(unittest.TestCase):
         self.assertEqual(days_remaining(past), -15)
         self.assertEqual(days_since(past), 15)
         self.assertEqual(days_since(today), 0)
+
+    def test_time_display_handles_postgres_time(self):
+        self.assertEqual(format_time_display("07:56:00"), "07:56 AM")
+        self.assertEqual(format_time_display("18:05:00.123"), "06:05 PM")
+        self.assertEqual(format_time_display("2026-11-18T19:05:00+05:30"), "07:05 PM")
 
     def test_member_form_validation(self):
         valid_data = {

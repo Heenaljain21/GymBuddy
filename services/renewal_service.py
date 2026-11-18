@@ -10,14 +10,13 @@ from typing import List, Dict, Any, Optional, Tuple
 import uuid
 from utils.security import get_supabase_client
 from utils.date_utils import get_ist_today, days_remaining
+from .member_service import _latest_memberships
 
 
 def get_expiring_memberships(gym_id: str) -> Dict[str, List[Dict[str, Any]]]:
-    """Categorize active memberships by days remaining to expiry."""
+    """Bucket each member's current membership by days remaining (buckets are exclusive)."""
     client = get_supabase_client()
-    today = get_ist_today()
-
-    categories = {
+    categories: Dict[str, List[Dict[str, Any]]] = {
         "within_7_days": [],
         "within_15_days": [],
         "within_30_days": [],
@@ -26,48 +25,49 @@ def get_expiring_memberships(gym_id: str) -> Dict[str, List[Dict[str, Any]]]:
     }
 
     try:
-        # Fetch memberships and members
         mships = client.table("member_memberships").select("*").eq("gym_id", gym_id).execute().data or []
-        members = client.table("members").select("id, full_name, phone, member_code").eq("gym_id", gym_id).execute().data or []
-        plans = client.table("membership_plans").select("id, name, price, duration_days").eq("gym_id", gym_id).execute().data or []
-
-        mem_map = {m["id"]: m for m in members}
-        plan_map = {p["id"]: p for p in plans}
-
-        for mship in mships:
-            end_date_str = mship.get("end_date")
-            rem = days_remaining(end_date_str)
-            m_info = mem_map.get(mship.get("member_id"), {})
-            p_info = plan_map.get(mship.get("plan_id"), {})
-
-            item = {
-                "membership_id": mship.get("id"),
-                "member_id": mship.get("member_id"),
-                "member_name": m_info.get("full_name", "Member"),
-                "phone": m_info.get("phone", "-"),
-                "member_code": m_info.get("member_code", "-"),
-                "plan_id": mship.get("plan_id"),
-                "plan_name": p_info.get("name", "Standard"),
-                "start_date": mship.get("start_date"),
-                "expiry_date": end_date_str,
-                "days_remaining": rem,
-                "status": "expired" if rem < 0 else "active",
-            }
-
-            categories["all"].append(item)
-
-            if rem < 0:
-                categories["expired"].append(item)
-            elif rem <= 7:
-                categories["within_7_days"].append(item)
-            elif rem <= 15:
-                categories["within_15_days"].append(item)
-            elif rem <= 30:
-                categories["within_30_days"].append(item)
-
-        return categories
+        members = client.table("members").select("*").eq("gym_id", gym_id).execute().data or []
+        plans = client.table("membership_plans").select("*").eq("gym_id", gym_id).execute().data or []
     except Exception:
         return categories
+
+    mem_map = {m["id"]: m for m in members}
+    plan_map = {p["id"]: p for p in plans}
+
+    for mid, mship in _latest_memberships(mships).items():
+        m_info = mem_map.get(mid)
+        if not m_info:
+            continue
+        end_date_str = mship.get("end_date")
+        rem = days_remaining(end_date_str)
+        p_info = plan_map.get(mship.get("plan_id"), {})
+        item = {
+            "membership_id": mship.get("id"),
+            "member_id": mid,
+            "member_name": m_info.get("full_name", "Member"),
+            "phone": m_info.get("phone", "-"),
+            "member_code": m_info.get("member_code", "-"),
+            "plan_id": mship.get("plan_id"),
+            "plan_name": p_info.get("name", "Standard"),
+            "plan_price": float(p_info.get("price") or 0),
+            "start_date": mship.get("start_date"),
+            "expiry_date": end_date_str,
+            "days_remaining": rem,
+            "status": "expired" if rem < 0 else "active",
+        }
+        categories["all"].append(item)
+        if rem < 0:
+            categories["expired"].append(item)
+        elif rem <= 7:
+            categories["within_7_days"].append(item)
+        elif rem <= 15:
+            categories["within_15_days"].append(item)
+        elif rem <= 30:
+            categories["within_30_days"].append(item)
+
+    for k in categories:
+        categories[k].sort(key=lambda x: x["days_remaining"])
+    return categories
 
 
 def renew_membership(
@@ -78,43 +78,32 @@ def renew_membership(
     payment_method: str = "Cash",
     transaction_ref: str = "",
 ) -> Tuple[bool, Optional[str]]:
-    """Renew member membership, extend end_date, and record payment."""
+    """Renew a membership: extend from the current end date (or today if lapsed) and record payment."""
     client = get_supabase_client()
     try:
         today = get_ist_today()
-        # Fetch plan duration
         plan_res = client.table("membership_plans").select("*").eq("id", new_plan_id).execute()
         if not plan_res.data:
             return False, "Selected membership plan not found."
         plan = plan_res.data[0]
         duration_days = int(plan.get("duration_days", 30))
 
-        # Check existing active membership
-        existing_res = (
-            client.table("member_memberships")
-            .select("*")
-            .eq("gym_id", gym_id)
-            .eq("member_id", member_id)
-            .execute()
-        )
-        existing = existing_res.data[0] if existing_res.data else None
+        existing_rows = client.table("member_memberships").select("*").eq("gym_id", gym_id).eq("member_id", member_id).execute().data or []
+        existing = _latest_memberships(existing_rows).get(member_id)
 
-        # Calculate new end date
+        start_from = today
         if existing and existing.get("end_date"):
             try:
-                curr_end = date.fromisoformat(existing["end_date"])
-                # If current membership hasn't expired yet, extend from current end date
-                start_from = curr_end if curr_end > today else today
-            except Exception:
-                start_from = today
-        else:
-            start_from = today
+                curr_end = date.fromisoformat(str(existing["end_date"])[:10])
+                if curr_end > today:
+                    start_from = curr_end
+            except ValueError:
+                pass
 
-        new_start = str(start_from)
+        new_start = str(start_from if not existing or start_from == today else existing.get("start_date"))
         new_end = str(start_from + timedelta(days=duration_days))
 
         if existing:
-            # Update current membership
             client.table("member_memberships").update({
                 "plan_id": new_plan_id,
                 "start_date": new_start,
@@ -134,21 +123,19 @@ def renew_membership(
                 "amount_paid": amount_paid,
             }).execute()
 
-        # Record payment
-        receipt_no = f"REC-{today.year}-{str(uuid.uuid4())[:6].upper()}"
-        client.table("payments").insert({
-            "id": str(uuid.uuid4()),
-            "gym_id": gym_id,
-            "member_id": member_id,
-            "amount": amount_paid,
-            "payment_date": str(today),
-            "payment_method": payment_method,
-            "transaction_ref": transaction_ref,
-            "receipt_no": receipt_no,
-            "remarks": f"Renewal for plan: {plan.get('name')}",
-        }).execute()
+        if amount_paid > 0:
+            client.table("payments").insert({
+                "id": str(uuid.uuid4()),
+                "gym_id": gym_id,
+                "member_id": member_id,
+                "amount": amount_paid,
+                "payment_date": str(today),
+                "payment_method": payment_method,
+                "transaction_ref": transaction_ref,
+                "receipt_no": f"REC-{today.year}-{str(uuid.uuid4())[:6].upper()}",
+                "remarks": f"Renewal: {plan.get('name')}",
+            }).execute()
 
-        # Log renewal record
         client.table("renewal_records").insert({
             "id": str(uuid.uuid4()),
             "gym_id": gym_id,
@@ -160,13 +147,14 @@ def renew_membership(
             "new_end_date": new_end,
         }).execute()
 
+        # A renewed member is, by definition, an active member again.
+        client.table("members").update({"is_active": True}).eq("id", member_id).execute()
         return True, None
     except Exception as e:
-        return False, f"Renewal failed: {str(e)}"
+        return False, f"Renewal failed: {e}"
 
 
 def get_renewal_summary(gym_id: str) -> Dict[str, int]:
-    """Return count breakdown of renewals."""
     cats = get_expiring_memberships(gym_id)
     return {
         "within_7_days": len(cats["within_7_days"]),

@@ -34,6 +34,20 @@ class TestServices(unittest.TestCase):
         self.assertIsNone(err)
         self.assertTrue(is_authenticated())
 
+    def test_auth_rejects_bad_credentials(self):
+        ok, err = sign_in("owner@fitzone.in", "wrong-password")
+        self.assertFalse(ok)
+        self.assertIn("invalid", err.lower())
+        ok, _ = sign_in("nobody@example.com", "owner123")
+        self.assertFalse(ok)
+
+    def test_member_login_links_own_member_record(self):
+        import streamlit as st
+        ok, _ = sign_in("amit@gmail.com", "member123")
+        self.assertTrue(ok)
+        self.assertEqual(st.session_state["user_role"], "member")
+        self.assertEqual(st.session_state["member_id"], "bbbb0001-0000-0000-0000-000000000001")
+
     def test_gym_and_plans(self):
         gyms = get_all_gyms()
         self.assertGreaterEqual(len(gyms), 1)
@@ -132,6 +146,32 @@ class TestServices(unittest.TestCase):
         self.assertIsNotNone(dp)
         self.assertIn("meals", dp)
         self.assertIn("Breakfast", dp["meals"])
+
+    def test_inactivity_threshold_is_respected(self):
+        loose = get_inactive_members(GYM_ID, threshold_days=7)["all_inactive"]
+        strict = get_inactive_members(GYM_ID, threshold_days=30)["all_inactive"]
+        self.assertGreater(len(loose), len(strict))
+        self.assertTrue(all(m["days_inactive"] >= 30 for m in strict))
+
+    def test_renewal_extends_from_current_end_date(self):
+        from datetime import timedelta
+        member = next(m for m in get_members(GYM_ID) if m["full_name"] == "Rohan Gupta")  # annual plan, far from expiry
+        old_end = date.fromisoformat(member["expiry_date"])
+        monthly = next(p for p in get_membership_plans(GYM_ID) if p["duration_days"] == 30)
+        ok, err = renew_membership(GYM_ID, member["id"], monthly["id"], monthly["price"])
+        self.assertTrue(ok, err)
+        renewed = next(m for m in get_members(GYM_ID) if m["id"] == member["id"])
+        self.assertEqual(date.fromisoformat(renewed["expiry_date"]), old_end + timedelta(days=30))
+
+    def test_plans_sorted_by_price(self):
+        prices = [p["price"] for p in get_membership_plans(GYM_ID)]
+        self.assertEqual(prices, sorted(prices))
+
+    def test_qr_pass_round_trip(self):
+        import io
+        from components.qr_components import generate_qr_png, decode_qr_image
+        self.assertEqual(decode_qr_image(io.BytesIO(generate_qr_png("GMB-2026-004"))), "GMB-2026-004")
+        self.assertEqual(get_member_by_qr(GYM_ID, "gmb-2026-004")["full_name"], "Sneha Reddy")
 
     def test_inactivity_and_reporting(self):
         inactives = get_inactive_members(GYM_ID)

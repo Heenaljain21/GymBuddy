@@ -1,142 +1,95 @@
-"""Interactive Plotly charts for GYM BUDDY.
-
-Designed with dark futuristic theme, neon accents, and responsive layouts.
-"""
+"""Interactive Plotly charts for GYM BUDDY, styled to match the dark theme."""
 
 from __future__ import annotations
-from typing import Any, Dict, List, Optional
+from datetime import date
+from typing import Any, Dict
+
 import pandas as pd
 import plotly.graph_objects as go
-import plotly.express as px
 import streamlit as st
 
-
-DARK_LAYOUT = {
-    "paper_bgcolor": "rgba(23, 29, 48, 0.75)",
-    "plot_bgcolor": "rgba(17, 21, 37, 0.4)",
-    "font": {"color": "#94A3B8", "family": "Outfit, Inter, sans-serif"},
-    "xaxis": {
-        "gridcolor": "rgba(148, 163, 184, 0.1)",
-        "zerolinecolor": "rgba(148, 163, 184, 0.15)",
-        "tickfont": {"color": "#94A3B8"},
-    },
-    "yaxis": {
-        "gridcolor": "rgba(148, 163, 184, 0.1)",
-        "zerolinecolor": "rgba(148, 163, 184, 0.15)",
-        "tickfont": {"color": "#94A3B8"},
-    },
-    "margin": {"l": 30, "r": 20, "t": 40, "b": 30},
-}
+PURPLE = "#8B5CF6"
+CYAN = "#22D3C5"
+LIME = "#A3E635"
+AMBER = "#F59E0B"
+PALETTE = [PURPLE, CYAN, LIME, "#60A5FA", "#F472B6", AMBER]
+CONFIG = {"displayModeBar": False, "responsive": True}
 
 
-def get_chart_theme() -> Dict[str, Any]:
-    """Return dark chart layout dictionary."""
-    return DARK_LAYOUT.copy()
+def _layout(title: str, height: int = 300, **extra: Any) -> Dict[str, Any]:
+    layout: Dict[str, Any] = {
+        "title": {"text": title, "font": {"color": "#E8ECF4", "size": 14, "family": "Outfit, Inter, sans-serif"}, "x": 0.01, "y": 0.96},
+        "paper_bgcolor": "rgba(21, 26, 46, 0.6)",
+        "plot_bgcolor": "rgba(0,0,0,0)",
+        "font": {"color": "#94A0B8", "family": "Inter, sans-serif", "size": 12},
+        "margin": {"l": 48, "r": 16, "t": 48, "b": 36},
+        "height": height,
+        "xaxis": {"gridcolor": "rgba(148,160,184,0.08)", "zeroline": False, "showline": False},
+        "yaxis": {"gridcolor": "rgba(148,160,184,0.08)", "zeroline": False, "showline": False},
+        "hoverlabel": {"bgcolor": "#1B2138", "bordercolor": "#262E4A", "font": {"color": "#E8ECF4"}},
+        "showlegend": False,
+        "bargap": 0.35,
+    }
+    layout.update(extra)
+    return layout
 
 
-def render_revenue_chart(
-    df: pd.DataFrame,
-    x_col: str = "date",
-    y_col: str = "amount",
-    title: str = "Daily Revenue (₹)",
-) -> None:
-    """Render revenue bar/area chart with cyan to purple neon gradients."""
+def _date_axis(layout: Dict[str, Any], df: pd.DataFrame, x: str) -> None:
+    if not df.empty and isinstance(df[x].iloc[0], date):
+        layout["xaxis"]["tickformat"] = "%d %b"
+
+
+def _show(fig: go.Figure) -> None:
+    st.plotly_chart(fig, width="stretch", config=CONFIG, theme=None)
+
+
+def bar_chart(df: pd.DataFrame, x: str, y: str, title: str, money: bool = False, color: str = PURPLE, height: int = 300) -> None:
     fig = go.Figure()
-    if not df.empty and x_col in df.columns and y_col in df.columns:
-        fig.add_trace(
-            go.Bar(
-                x=df[x_col],
-                y=df[y_col],
-                marker=dict(
-                    color=df[y_col],
-                    colorscale=[[0, "#3B82F6"], [0.5, "#8B5CF6"], [1, "#06D6C9"]],
-                    line=dict(color="#06D6C9", width=1),
-                ),
-                hovertemplate="<b>Date:</b> %{x}<br><b>Revenue:</b> ₹%{y:,.2f}<extra></extra>",
-            )
-        )
-    layout = get_chart_theme()
-    layout["title"] = {"text": f"<b>{title}</b>", "font": {"color": "#F8FAFC", "size": 15}}
+    if not df.empty:
+        fig.add_trace(go.Bar(
+            x=df[x], y=df[y],
+            marker={"color": color, "line": {"width": 0}, "cornerradius": 6},
+            hovertemplate=("%{x}<br><b>₹%{y:,.0f}</b>" if money else "%{x}<br><b>%{y}</b>") + "<extra></extra>",
+        ))
+    layout = _layout(title, height)
+    _date_axis(layout, df, x)
+    if money:
+        layout["yaxis"]["tickprefix"] = "₹"
+        layout["yaxis"]["tickformat"] = ",.0f"
     fig.update_layout(**layout)
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    _show(fig)
 
 
-def render_attendance_chart(
-    df: pd.DataFrame,
-    x_col: str = "date",
-    y_col: str = "count",
-    title: str = "Attendance Trends",
-) -> None:
-    """Render attendance line/spline chart with neon green/cyan styling."""
+def line_chart(df: pd.DataFrame, x: str, y: str, title: str, color: str = CYAN, height: int = 300, fill: bool = True) -> None:
     fig = go.Figure()
-    if not df.empty and x_col in df.columns and y_col in df.columns:
-        fig.add_trace(
-            go.Scatter(
-                x=df[x_col],
-                y=df[y_col],
-                mode="lines+markers",
-                line=dict(color="#A3FF5C", width=3, shape="spline"),
-                marker=dict(size=8, color="#06D6C9", line=dict(color="#090B14", width=2)),
-                fill="tozeroy",
-                fillcolor="rgba(163, 255, 92, 0.1)",
-                hovertemplate="<b>Date:</b> %{x}<br><b>Check-ins:</b> %{y}<extra></extra>",
-            )
-        )
-    layout = get_chart_theme()
-    layout["title"] = {"text": f"<b>{title}</b>", "font": {"color": "#F8FAFC", "size": 15}}
+    if not df.empty:
+        r, g, b = (int(color[i:i + 2], 16) for i in (1, 3, 5))
+        fig.add_trace(go.Scatter(
+            x=df[x], y=df[y], mode="lines+markers",
+            line={"color": color, "width": 3, "shape": "spline", "smoothing": 0.6},
+            marker={"size": 6, "color": color, "line": {"color": "#0B0E1A", "width": 2}},
+            fill="tozeroy" if fill else None, fillcolor=f"rgba({r},{g},{b},0.12)",
+            hovertemplate="%{x|%d %b}<br><b>%{y}</b><extra></extra>",
+        ))
+    layout = _layout(title, height)
+    _date_axis(layout, df, x)
+    layout["yaxis"]["rangemode"] = "tozero"
     fig.update_layout(**layout)
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    _show(fig)
 
 
-def render_membership_distribution(
-    df: pd.DataFrame,
-    labels_col: str = "plan",
-    values_col: str = "count",
-    title: str = "Membership Plan Distribution",
-) -> None:
-    """Render donut chart of membership plans."""
+def donut_chart(df: pd.DataFrame, labels: str, values: str, title: str, height: int = 300) -> None:
     fig = go.Figure()
-    if not df.empty and labels_col in df.columns and values_col in df.columns:
-        colors = ["#8B5CF6", "#06D6C9", "#A3FF5C", "#3B82F6", "#EC4899", "#F59E0B"]
-        fig.add_trace(
-            go.Pie(
-                labels=df[labels_col],
-                values=df[values_col],
-                hole=0.6,
-                marker=dict(colors=colors, line=dict(color="#090B14", width=2)),
-                hovertemplate="<b>%{label}</b><br>Members: %{value} (%{percent})<extra></extra>",
-                textinfo="label+percent",
-                textposition="outside",
-            )
-        )
-    layout = get_chart_theme()
-    layout["title"] = {"text": f"<b>{title}</b>", "font": {"color": "#F8FAFC", "size": 15}}
-    layout["showlegend"] = False
+    if not df.empty:
+        fig.add_trace(go.Pie(
+            labels=df[labels], values=df[values], hole=0.62, sort=False,
+            marker={"colors": PALETTE, "line": {"color": "#0B0E1A", "width": 2}},
+            textinfo="value", textfont={"color": "#fff", "size": 13},
+            hovertemplate="<b>%{label}</b><br>%{value} members (%{percent})<extra></extra>",
+        ))
+        fig.add_annotation(text=f"<b>{int(df[values].sum())}</b><br><span style='font-size:11px'>active</span>",
+                           showarrow=False, font={"size": 20, "color": "#E8ECF4"})
+    layout = _layout(title, height, showlegend=True)
+    layout["legend"] = {"orientation": "h", "y": -0.05, "font": {"size": 11}}
     fig.update_layout(**layout)
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-
-
-def render_member_growth_chart(
-    df: pd.DataFrame,
-    x_col: str = "date",
-    y_col: str = "total",
-    title: str = "Cumulative Member Growth",
-) -> None:
-    """Render member growth area chart."""
-    fig = go.Figure()
-    if not df.empty and x_col in df.columns and y_col in df.columns:
-        fig.add_trace(
-            go.Scatter(
-                x=df[x_col],
-                y=df[y_col],
-                mode="lines",
-                line=dict(color="#8B5CF6", width=3, shape="spline"),
-                fill="tozeroy",
-                fillcolor="rgba(139, 92, 246, 0.15)",
-                hovertemplate="<b>Date:</b> %{x}<br><b>Total Members:</b> %{y}<extra></extra>",
-            )
-        )
-    layout = get_chart_theme()
-    layout["title"] = {"text": f"<b>{title}</b>", "font": {"color": "#F8FAFC", "size": 15}}
-    fig.update_layout(**layout)
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    _show(fig)

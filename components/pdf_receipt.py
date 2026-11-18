@@ -5,116 +5,83 @@ Generates professional receipt documents for membership fees in Indian Rupees.
 
 from __future__ import annotations
 import io
-from typing import Dict, Any, Optional
-from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from typing import Dict, Any
+from xml.sax.saxutils import escape
+
 from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+
+INK = colors.HexColor("#0F172A")
+MUTED = colors.HexColor("#64748B")
+BRAND = colors.HexColor("#6D28D9")
+LINE = colors.HexColor("#E2E8F0")
+
+
+def _p(text: Any, style: ParagraphStyle) -> Paragraph:
+    """Paragraph with user text escaped (ReportLab parses mini-XML)."""
+    return Paragraph(escape("" if text is None else str(text)), style)
 
 
 def generate_receipt_pdf(payment_data: Dict[str, Any]) -> bytes:
-    """Generate a clean PDF payment receipt and return bytes."""
+    """Generate a clean A4 PDF payment receipt and return its bytes."""
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=letter,
-        rightMargin=40,
-        leftMargin=40,
-        topMargin=40,
-        bottomMargin=40,
-    )
-    
-    styles = getSampleStyleSheet()
-    
-    title_style = ParagraphStyle(
-        "ReceiptTitle",
-        parent=styles["Heading1"],
-        fontSize=22,
-        leading=26,
-        textColor=colors.HexColor("#1E1B4B"),
-        fontName="Helvetica-Bold",
-        alignment=1,
-    )
-    
-    subtitle_style = ParagraphStyle(
-        "ReceiptSubtitle",
-        parent=styles["Normal"],
-        fontSize=10,
-        textColor=colors.HexColor("#64748B"),
-        alignment=1,
-    )
-    
-    bold_style = ParagraphStyle(
-        "ReceiptBold",
-        parent=styles["Normal"],
-        fontSize=11,
-        fontName="Helvetica-Bold",
-        textColor=colors.HexColor("#0F172A"),
-    )
-    
-    normal_style = ParagraphStyle(
-        "ReceiptNormal",
-        parent=styles["Normal"],
-        fontSize=10,
-        textColor=colors.HexColor("#334155"),
-    )
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=48, leftMargin=48, topMargin=48, bottomMargin=48,
+                            title=f"Receipt {payment_data.get('receipt_no', '')}")
+    base = getSampleStyleSheet()
+    title = ParagraphStyle("t", parent=base["Heading1"], fontSize=20, leading=24, textColor=INK, fontName="Helvetica-Bold", spaceAfter=2)
+    sub = ParagraphStyle("s", parent=base["Normal"], fontSize=9.5, textColor=MUTED, leading=13)
+    label = ParagraphStyle("l", parent=base["Normal"], fontSize=8.5, textColor=MUTED, fontName="Helvetica-Bold", leading=11)
+    body = ParagraphStyle("b", parent=base["Normal"], fontSize=10.5, textColor=INK, leading=14)
+    bold = ParagraphStyle("bb", parent=body, fontName="Helvetica-Bold")
+    right_bold = ParagraphStyle("rb", parent=bold, alignment=2)
+    tag = ParagraphStyle("tag", parent=base["Normal"], fontSize=10, textColor=BRAND, fontName="Helvetica-Bold", alignment=2)
 
-    elements = []
-    
-    gym_name = payment_data.get("gym_name", "GYM BUDDY FITNESS")
-    receipt_no = payment_data.get("receipt_no", "REC-0001")
-    date_str = payment_data.get("payment_date", "Today")
-    member_name = payment_data.get("member_name", "Member")
-    member_code = payment_data.get("member_code", "GMB-000")
-    plan_name = payment_data.get("plan_name", "Standard Membership")
-    amount = payment_data.get("amount", 0.0)
-    payment_method = payment_data.get("payment_method", "Cash")
-    ref_no = payment_data.get("transaction_ref") or "N/A"
-    
-    elements.append(Paragraph(f"<b>{gym_name.upper()}</b>", title_style))
-    elements.append(Paragraph("OFFICIAL PAYMENT RECEIPT", subtitle_style))
-    elements.append(Spacer(1, 15))
-    
-    # Meta table
-    meta_data = [
-        [Paragraph(f"<b>Receipt No:</b> {receipt_no}", normal_style), Paragraph(f"<b>Date:</b> {date_str}", normal_style)],
-        [Paragraph(f"<b>Member ID:</b> {member_code}", normal_style), Paragraph(f"<b>Payment Mode:</b> {payment_method}", normal_style)],
-    ]
-    t_meta = Table(meta_data, colWidths=[260, 260])
-    t_meta.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-    ]))
-    elements.append(t_meta)
-    elements.append(Spacer(1, 15))
-    
-    # Member details table
-    items_data = [
-        [Paragraph("<b>Description / Item</b>", bold_style), Paragraph("<b>Details</b>", bold_style), Paragraph("<b>Amount (INR)</b>", bold_style)],
-        [Paragraph(f"Membership: {plan_name}", normal_style), Paragraph(f"Member: {member_name}", normal_style), Paragraph(f"Rs. {amount:,.2f}", bold_style)],
-        [Paragraph(f"Reference: {ref_no}", normal_style), Paragraph("Status: Paid", normal_style), Paragraph("", normal_style)],
-        [Paragraph("<b>TOTAL RECEIVED</b>", bold_style), Paragraph("", normal_style), Paragraph(f"<b>Rs. {amount:,.2f}</b>", bold_style)],
-    ]
-    
-    t_items = Table(items_data, colWidths=[220, 180, 120])
-    t_items.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#F1F5F9")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#0F172A")),
-        ("ALIGN", (2, 0), (2, -1), "RIGHT"),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
-        ("LINEBELOW", (0, 0), (-1, 0), 1.5, colors.HexColor("#8B5CF6")),
+    amount = float(payment_data.get("amount") or 0.0)
+    amount_txt = f"Rs. {amount:,.2f}"
+
+    header = Table(
+        [[[_p(payment_data.get("gym_name", "GYM BUDDY"), title), _p(payment_data.get("gym_address", ""), sub)],
+          [Paragraph("PAYMENT RECEIPT", tag), _p(payment_data.get("receipt_no", ""), ParagraphStyle("rn", parent=sub, alignment=2))]]],
+        colWidths=[330, 170],
+    )
+    header.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LINEBELOW", (0, 0), (-1, 0), 2, BRAND), ("BOTTOMPADDING", (0, 0), (-1, -1), 12)]))
+
+    meta = Table(
+        [
+            [_p("RECEIVED FROM", label), _p("MEMBER ID", label), _p("DATE", label), _p("PAYMENT MODE", label)],
+            [_p(payment_data.get("member_name", "Member"), bold), _p(payment_data.get("member_code", "-"), body),
+             _p(payment_data.get("payment_date", "-"), body), _p(payment_data.get("payment_method", "Cash"), body)],
+        ],
+        colWidths=[170, 110, 110, 110],
+    )
+    meta.setStyle(TableStyle([("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3)]))
+
+    items = Table(
+        [
+            [_p("DESCRIPTION", label), _p("REFERENCE", label), Paragraph("AMOUNT", ParagraphStyle("al", parent=label, alignment=2))],
+            [_p(f"Membership fee: {payment_data.get('plan_name') or 'Gym membership'}", body),
+             _p(payment_data.get("transaction_ref") or "-", body), _p(amount_txt, right_bold)],
+            [_p(payment_data.get("remarks") or "", sub), "", ""],
+            [_p("Total received", bold), "", _p(amount_txt, right_bold)],
+        ],
+        colWidths=[260, 130, 110],
+    )
+    items.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#F8FAFC")),
+        ("LINEBELOW", (0, 0), (-1, 0), 0.8, LINE),
+        ("LINEABOVE", (0, -1), (-1, -1), 1.2, INK),
         ("TOPPADDING", (0, 0), (-1, -1), 8),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#F8FAFC")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
     ]))
-    elements.append(t_items)
-    elements.append(Spacer(1, 30))
-    
-    elements.append(Paragraph("<i>This is a computer-generated receipt for gym membership fees. Thank you for training with us!</i>", subtitle_style))
-    elements.append(Spacer(1, 15))
-    elements.append(Paragraph("<b>GYM BUDDY</b> • Your Gym. Your Goals. One Smart Buddy.", subtitle_style))
 
+    elements = [
+        header, Spacer(1, 18), meta, Spacer(1, 18), items, Spacer(1, 28),
+        Paragraph("Status: <b>PAID</b>. This is a computer-generated receipt and does not require a signature.", sub),
+        Spacer(1, 6),
+        Paragraph("Thank you for training with us! Powered by GYM BUDDY.", sub),
+    ]
     doc.build(elements)
-    pdf_bytes = buffer.getvalue()
-    buffer.close()
-    return pdf_bytes
+    return buffer.getvalue()

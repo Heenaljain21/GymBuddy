@@ -3,33 +3,56 @@
 Provides an in-memory Supabase-compatible interface mimicking query chaining:
 .table().select().eq().execute()
 Pre-seeded with realistic Indian demo data for out-of-the-box demonstration.
+
+Every MockClient owns its own store, so each browser session on a deployed
+demo gets an isolated sandbox instead of sharing one global dataset with
+every other visitor.
 """
 
 from __future__ import annotations
 import copy
-from datetime import datetime, date, timedelta
-from typing import Any, Dict, List, Optional
+import random
+from datetime import timedelta
+from typing import Any, Dict, List
 import uuid
 
-# In-memory storage dictionary
-_GLOBAL_STORE: Dict[str, List[Dict[str, Any]]] = {}
+from .date_utils import get_ist_today, get_ist_now
+
+GYM_ID = "00000000-0000-0000-0000-000000000001"
+ADMIN_ID = "00000000-0000-0000-0000-000000000000"
+OWNER_ID = "11111111-1111-1111-1111-111111111111"
+RECEPTIONIST_ID = "22222222-2222-2222-2222-222222222222"
+TRAINER_ID = "33333333-3333-3333-3333-333333333333"
+TRAINER2_ID = "33333333-3333-3333-3333-333333333334"
+MEMBER_USER_ID = "44444444-4444-4444-4444-444444444444"
+
+# Demo credentials (offline mode only). Live deployments authenticate via Supabase Auth.
+DEMO_PASSWORDS = {
+    "admin@gymbuddy.io": "admin123",
+    "owner@fitzone.in": "owner123",
+    "reception@fitzone.in": "reception123",
+    "vikram@fitzone.in": "trainer123",
+    "neha@fitzone.in": "trainer123",
+    "amit@gmail.com": "member123",
+}
 
 
-def _init_seed_data():
-    global _GLOBAL_STORE
-    if _GLOBAL_STORE:
-        return
+def _member_uuid(i: int) -> str:
+    return f"bbbb{i:04d}-0000-0000-0000-{i:012d}"
 
-    today = date.today()
-    gym_id = "00000000-0000-0000-0000-000000000001"
-    owner_id = "11111111-1111-1111-1111-111111111111"
-    receptionist_id = "22222222-2222-2222-2222-222222222222"
-    trainer_id = "33333333-3333-3333-3333-333333333333"
-    member_user_id = "44444444-4444-4444-4444-444444444444"
 
-    _GLOBAL_STORE["gyms"] = [
+def _seed_data() -> Dict[str, List[Dict[str, Any]]]:
+    store: Dict[str, List[Dict[str, Any]]] = {}
+    today = get_ist_today()
+    now_minutes = get_ist_now().hour * 60 + get_ist_now().minute
+    rng = random.Random(42)
+
+    def d(days_ago: int) -> str:
+        return str(today - timedelta(days=days_ago))
+
+    store["gyms"] = [
         {
-            "id": gym_id,
+            "id": GYM_ID,
             "name": "FitZone Premium Gym",
             "slug": "fitzone-indiranagar",
             "tagline": "Transform Your Physique",
@@ -44,12 +67,13 @@ def _init_seed_data():
         }
     ]
 
-    _GLOBAL_STORE["profiles"] = [
-        {"id": "00000000-0000-0000-0000-000000000000", "gym_id": gym_id, "role": "admin", "full_name": "Platform Admin", "email": "admin@gymbuddy.io", "phone": "9999900000"},
-        {"id": owner_id, "gym_id": gym_id, "role": "owner", "full_name": "Rajesh Kumar", "email": "owner@fitzone.in", "phone": "9876543210"},
-        {"id": receptionist_id, "gym_id": gym_id, "role": "receptionist", "full_name": "Pooja Sharma", "email": "reception@fitzone.in", "phone": "9876543211"},
-        {"id": trainer_id, "gym_id": gym_id, "role": "trainer", "full_name": "Vikram Singh", "email": "vikram@fitzone.in", "phone": "9876543212"},
-        {"id": member_user_id, "gym_id": gym_id, "role": "member", "full_name": "Amit Sharma", "email": "amit@gmail.com", "phone": "9876500001"},
+    store["profiles"] = [
+        {"id": ADMIN_ID, "gym_id": GYM_ID, "role": "admin", "full_name": "Platform Admin", "email": "admin@gymbuddy.io", "phone": "9999900000"},
+        {"id": OWNER_ID, "gym_id": GYM_ID, "role": "owner", "full_name": "Rajesh Kumar", "email": "owner@fitzone.in", "phone": "9876543210"},
+        {"id": RECEPTIONIST_ID, "gym_id": GYM_ID, "role": "receptionist", "full_name": "Pooja Sharma", "email": "reception@fitzone.in", "phone": "9876543211"},
+        {"id": TRAINER_ID, "gym_id": GYM_ID, "role": "trainer", "full_name": "Vikram Singh", "email": "vikram@fitzone.in", "phone": "9876543212"},
+        {"id": TRAINER2_ID, "gym_id": GYM_ID, "role": "trainer", "full_name": "Neha Kapoor", "email": "neha@fitzone.in", "phone": "9876543213"},
+        {"id": MEMBER_USER_ID, "gym_id": GYM_ID, "role": "member", "full_name": "Amit Sharma", "email": "amit@gmail.com", "phone": "9876500001"},
     ]
 
     plan_monthly = "aaaa0001-0000-0000-0000-000000000001"
@@ -57,109 +81,169 @@ def _init_seed_data():
     plan_half_yearly = "aaaa0003-0000-0000-0000-000000000003"
     plan_yearly = "aaaa0004-0000-0000-0000-000000000004"
 
-    _GLOBAL_STORE["membership_plans"] = [
-        {"id": plan_monthly, "gym_id": gym_id, "name": "Monthly Starter", "duration_days": 30, "price": 1800.0, "description": "Standard 1 month gym access", "is_active": True},
-        {"id": plan_quarterly, "gym_id": gym_id, "name": "Quarterly Fitness", "duration_days": 90, "price": 4500.0, "description": "3 months access with cardio", "is_active": True},
-        {"id": plan_half_yearly, "gym_id": gym_id, "name": "Half-Yearly Transformation", "duration_days": 180, "price": 8000.0, "description": "6 months full access + steam", "is_active": True},
-        {"id": plan_yearly, "gym_id": gym_id, "name": "Annual Champion", "duration_days": 365, "price": 14000.0, "description": "12 months VIP access + personal trainer session", "is_active": True},
+    store["membership_plans"] = [
+        {"id": plan_monthly, "gym_id": GYM_ID, "name": "Monthly Starter", "duration_days": 30, "price": 1800.0, "description": "Standard 1 month gym access", "is_active": True},
+        {"id": plan_quarterly, "gym_id": GYM_ID, "name": "Quarterly Fitness", "duration_days": 90, "price": 4500.0, "description": "3 months access with cardio", "is_active": True},
+        {"id": plan_half_yearly, "gym_id": GYM_ID, "name": "Half-Yearly Transformation", "duration_days": 180, "price": 8000.0, "description": "6 months full access + steam", "is_active": True},
+        {"id": plan_yearly, "gym_id": GYM_ID, "name": "Annual Champion", "duration_days": 365, "price": 14000.0, "description": "12 months VIP access + PT session", "is_active": True},
+    ]
+    plan_by_id = {p["id"]: p for p in store["membership_plans"]}
+
+    # name, phone, email, age, gender, area, plan, membership_start_days_ago, joined_days_ago, is_active, visit_prob, last_visit_days_ago
+    roster = [
+        ("Amit Sharma", "9876500001", "amit@gmail.com", 28, "Male", "Indiranagar", plan_quarterly, 30, 120, True, 0.8, 0),
+        ("Priya Patel", "9876500002", "priya.p@gmail.com", 26, "Female", "Koramangala", plan_monthly, 26, 146, True, 0.7, 0),
+        ("Rahul Verma", "9876500003", "rahul.v@yahoo.com", 32, "Male", "HSR Layout", plan_half_yearly, 168, 168, True, 0.6, 0),
+        ("Sneha Reddy", "9876500004", "sneha.r@gmail.com", 24, "Female", "Whitefield", plan_monthly, 35, 95, True, 0.4, 20),
+        ("Rohan Gupta", "9876500005", "rohan.g@gmail.com", 30, "Male", "BTM Layout", plan_yearly, 100, 100, True, 0.65, 1),
+        ("Ananya Iyer", "9876500006", "ananya.i@outlook.com", 29, "Female", "Jayanagar", plan_quarterly, 80, 80, True, 0.5, 9),
+        ("Karan Malhotra", "9876500007", "karan.m@gmail.com", 35, "Male", "Indiranagar", plan_monthly, 20, 50, True, 0.5, 18),
+        ("Deepika Joshi", "9876500008", "deepika.j@gmail.com", 27, "Female", "Marathahalli", plan_monthly, 45, 75, False, 0.3, 40),
+        ("Arjun Nair", "9876500009", "arjun.n@gmail.com", 31, "Male", "Domlur", plan_quarterly, 85, 85, True, 0.55, 2),
+        ("Meera Krishnan", "9876500010", "meera.k@gmail.com", 23, "Female", "Ulsoor", plan_monthly, 6, 6, True, 0.0, None),
     ]
 
-    m1_id = "bbbb0001-0000-0000-0000-000000000001"
-    m2_id = "bbbb0002-0000-0000-0000-000000000002"
-    m3_id = "bbbb0003-0000-0000-0000-000000000003"
-    m4_id = "bbbb0004-0000-0000-0000-000000000004"
-    m5_id = "bbbb0005-0000-0000-0000-000000000005"
-    m6_id = "bbbb0006-0000-0000-0000-000000000006"
-    m7_id = "bbbb0007-0000-0000-0000-000000000007"
-    m8_id = "bbbb0008-0000-0000-0000-000000000008"
+    store["members"] = []
+    store["member_memberships"] = []
+    store["payments"] = []
+    store["attendance"] = []
+    receipt_seq = 1
 
-    _GLOBAL_STORE["members"] = [
-        {"id": m1_id, "gym_id": gym_id, "user_id": member_user_id, "member_code": "GMB-2026-001", "full_name": "Amit Sharma", "phone": "9876500001", "email": "amit@gmail.com", "age": 28, "gender": "Male", "address": "Indiranagar, Bengaluru", "qr_code_data": "GMB-2026-001", "is_active": True},
-        {"id": m2_id, "gym_id": gym_id, "user_id": None, "member_code": "GMB-2026-002", "full_name": "Priya Patel", "phone": "9876500002", "email": "priya.p@gmail.com", "age": 26, "gender": "Female", "address": "Koramangala, Bengaluru", "qr_code_data": "GMB-2026-002", "is_active": True},
-        {"id": m3_id, "gym_id": gym_id, "user_id": None, "member_code": "GMB-2026-003", "full_name": "Rahul Verma", "phone": "9876500003", "email": "rahul.v@yahoo.com", "age": 32, "gender": "Male", "address": "HSR Layout, Bengaluru", "qr_code_data": "GMB-2026-003", "is_active": True},
-        {"id": m4_id, "gym_id": gym_id, "user_id": None, "member_code": "GMB-2026-004", "full_name": "Sneha Reddy", "phone": "9876500004", "email": "sneha.r@gmail.com", "age": 24, "gender": "Female", "address": "Whitefield, Bengaluru", "qr_code_data": "GMB-2026-004", "is_active": True},
-        {"id": m5_id, "gym_id": gym_id, "user_id": None, "member_code": "GMB-2026-005", "full_name": "Rohan Gupta", "phone": "9876500005", "email": "rohan.g@gmail.com", "age": 30, "gender": "Male", "address": "BTM Layout, Bengaluru", "qr_code_data": "GMB-2026-005", "is_active": True},
-        {"id": m6_id, "gym_id": gym_id, "user_id": None, "member_code": "GMB-2026-006", "full_name": "Ananya Iyer", "phone": "9876500006", "email": "ananya.i@outlook.com", "age": 29, "gender": "Female", "address": "Jayanagar, Bengaluru", "qr_code_data": "GMB-2026-006", "is_active": True},
-        {"id": m7_id, "gym_id": gym_id, "user_id": None, "member_code": "GMB-2026-007", "full_name": "Karan Malhotra", "phone": "9876500007", "email": "karan.m@gmail.com", "age": 35, "gender": "Male", "address": "Indiranagar, Bengaluru", "qr_code_data": "GMB-2026-007", "is_active": True},
-        {"id": m8_id, "gym_id": gym_id, "user_id": None, "member_code": "GMB-2026-008", "full_name": "Deepika Joshi", "phone": "9876500008", "email": "deepika.j@gmail.com", "age": 27, "gender": "Female", "address": "Marathahalli, Bengaluru", "qr_code_data": "GMB-2026-008", "is_active": False},
-    ]
+    for idx, (name, phone, email, age, gender, area, plan_id, start_ago, joined_ago, active, prob, last_ago) in enumerate(roster, start=1):
+        mid = _member_uuid(idx)
+        code = f"GMB-{today.year}-{idx:03d}"
+        plan = plan_by_id[plan_id]
+        store["members"].append({
+            "id": mid, "gym_id": GYM_ID, "user_id": MEMBER_USER_ID if idx == 1 else None,
+            "member_code": code, "full_name": name, "phone": phone, "email": email,
+            "age": age, "gender": gender, "address": f"{area}, Bengaluru",
+            "emergency_contact": f"98450{idx:05d}", "qr_code_data": code,
+            "is_active": active, "joined_date": d(joined_ago),
+        })
 
-    _GLOBAL_STORE["member_memberships"] = [
-        {"id": str(uuid.uuid4()), "gym_id": gym_id, "member_id": m1_id, "plan_id": plan_quarterly, "start_date": str(today - timedelta(days=30)), "end_date": str(today + timedelta(days=60)), "status": "active", "amount_paid": 4500.0},
-        {"id": str(uuid.uuid4()), "gym_id": gym_id, "member_id": m2_id, "plan_id": plan_monthly, "start_date": str(today - timedelta(days=26)), "end_date": str(today + timedelta(days=4)), "status": "active", "amount_paid": 1800.0},
-        {"id": str(uuid.uuid4()), "gym_id": gym_id, "member_id": m3_id, "plan_id": plan_half_yearly, "start_date": str(today - timedelta(days=168)), "end_date": str(today + timedelta(days=12)), "status": "active", "amount_paid": 8000.0},
-        {"id": str(uuid.uuid4()), "gym_id": gym_id, "member_id": m4_id, "plan_id": plan_monthly, "start_date": str(today - timedelta(days=35)), "end_date": str(today - timedelta(days=5)), "status": "expired", "amount_paid": 1800.0},
-        {"id": str(uuid.uuid4()), "gym_id": gym_id, "member_id": m5_id, "plan_id": plan_yearly, "start_date": str(today - timedelta(days=100)), "end_date": str(today + timedelta(days=265)), "status": "active", "amount_paid": 14000.0},
-        {"id": str(uuid.uuid4()), "gym_id": gym_id, "member_id": m6_id, "plan_id": plan_quarterly, "start_date": str(today - timedelta(days=80)), "end_date": str(today + timedelta(days=10)), "status": "active", "amount_paid": 4500.0},
-        {"id": str(uuid.uuid4()), "gym_id": gym_id, "member_id": m7_id, "plan_id": plan_monthly, "start_date": str(today - timedelta(days=20)), "end_date": str(today + timedelta(days=10)), "status": "active", "amount_paid": 1800.0},
-        {"id": str(uuid.uuid4()), "gym_id": gym_id, "member_id": m8_id, "plan_id": plan_monthly, "start_date": str(today - timedelta(days=45)), "end_date": str(today - timedelta(days=15)), "status": "expired", "amount_paid": 1800.0},
-    ]
+        start = today - timedelta(days=start_ago)
+        end = start + timedelta(days=plan["duration_days"])
+        store["member_memberships"].append({
+            "id": str(uuid.uuid4()), "gym_id": GYM_ID, "member_id": mid, "plan_id": plan_id,
+            "start_date": str(start), "end_date": str(end),
+            "status": "active" if end >= today else "expired", "amount_paid": plan["price"],
+        })
 
-    _GLOBAL_STORE["attendance"] = [
-        {"id": str(uuid.uuid4()), "gym_id": gym_id, "member_id": m1_id, "check_in_date": str(today), "check_in_time": "06:45:00", "method": "qr_code"},
-        {"id": str(uuid.uuid4()), "gym_id": gym_id, "member_id": m2_id, "check_in_date": str(today), "check_in_time": "07:15:00", "method": "qr_code"},
-        {"id": str(uuid.uuid4()), "gym_id": gym_id, "member_id": m3_id, "check_in_date": str(today), "check_in_time": "08:00:00", "method": "manual"},
-        {"id": str(uuid.uuid4()), "gym_id": gym_id, "member_id": m1_id, "check_in_date": str(today - timedelta(days=1)), "check_in_time": "06:50:00", "method": "qr_code"},
-        {"id": str(uuid.uuid4()), "gym_id": gym_id, "member_id": m2_id, "check_in_date": str(today - timedelta(days=1)), "check_in_time": "07:10:00", "method": "qr_code"},
-        {"id": str(uuid.uuid4()), "gym_id": gym_id, "member_id": m3_id, "check_in_date": str(today - timedelta(days=2)), "check_in_time": "08:15:00", "method": "qr_code"},
-        {"id": str(uuid.uuid4()), "gym_id": gym_id, "member_id": m7_id, "check_in_date": str(today - timedelta(days=18)), "check_in_time": "18:30:00", "method": "qr_code"},
-    ]
+        # One payment per plan cycle since joining, so revenue charts have real shape.
+        cycle_ago = start_ago
+        while cycle_ago <= joined_ago:
+            store["payments"].append({
+                "id": str(uuid.uuid4()), "gym_id": GYM_ID, "member_id": mid, "amount": plan["price"],
+                "payment_date": d(cycle_ago), "payment_method": rng.choice(["UPI", "UPI", "Cash", "Bank Transfer"]),
+                "transaction_ref": f"UPI/{today.year}/{rng.randint(10000, 99999)}",
+                "receipt_no": f"REC-{today.year}-{receipt_seq:04d}", "remarks": "",
+            })
+            receipt_seq += 1
+            cycle_ago += plan["duration_days"]
 
-    _GLOBAL_STORE["payments"] = [
-        {"id": str(uuid.uuid4()), "gym_id": gym_id, "member_id": m1_id, "amount": 4500.0, "payment_date": str(today - timedelta(days=30)), "payment_method": "UPI", "transaction_ref": "UPI/2026/09871", "receipt_no": "REC-2026-0001"},
-        {"id": str(uuid.uuid4()), "gym_id": gym_id, "member_id": m2_id, "amount": 1800.0, "payment_date": str(today - timedelta(days=26)), "payment_method": "UPI", "transaction_ref": "UPI/2026/09942", "receipt_no": "REC-2026-0002"},
-        {"id": str(uuid.uuid4()), "gym_id": gym_id, "member_id": m3_id, "amount": 8000.0, "payment_date": str(today - timedelta(days=168)), "payment_method": "Bank Transfer", "transaction_ref": "NEFT9823145", "receipt_no": "REC-2026-0003"},
-        {"id": str(uuid.uuid4()), "gym_id": gym_id, "member_id": m5_id, "amount": 14000.0, "payment_date": str(today - timedelta(days=100)), "payment_method": "Cash", "transaction_ref": "", "receipt_no": "REC-2026-0004"},
-        {"id": str(uuid.uuid4()), "gym_id": gym_id, "member_id": m1_id, "amount": 1500.0, "payment_date": str(today), "payment_method": "UPI", "transaction_ref": "UPI/2026/11883", "receipt_no": "REC-2026-0005"},
-    ]
+        # Attendance history for the last 45 days.
+        if last_ago is not None:
+            for days_ago in range(last_ago, min(45, joined_ago + 1)):
+                if days_ago == last_ago or rng.random() < prob:
+                    minutes = rng.choice([6, 6, 7, 7, 8, 18, 18, 19, 20]) * 60 + rng.randint(0, 59)
+                    if days_ago == 0 and minutes > now_minutes:
+                        # Never seed a check-in "later today" than the current time.
+                        if now_minutes < 30:
+                            continue
+                        minutes = rng.randint(max(now_minutes - 240, 0), now_minutes - 1)
+                    store["attendance"].append({
+                        "id": str(uuid.uuid4()), "gym_id": GYM_ID, "member_id": mid,
+                        "check_in_date": d(days_ago), "check_in_time": f"{minutes // 60:02d}:{minutes % 60:02d}:00",
+                        "method": rng.choice(["qr_code", "qr_code", "manual"]),
+                    })
 
-    _GLOBAL_STORE["trainer_assignments"] = [
-        {"id": str(uuid.uuid4()), "gym_id": gym_id, "trainer_id": trainer_id, "member_id": m1_id, "assigned_date": str(today - timedelta(days=30))},
-        {"id": str(uuid.uuid4()), "gym_id": gym_id, "trainer_id": trainer_id, "member_id": m2_id, "assigned_date": str(today - timedelta(days=25))},
-        {"id": str(uuid.uuid4()), "gym_id": gym_id, "trainer_id": trainer_id, "member_id": m3_id, "assigned_date": str(today - timedelta(days=20))},
+    m = {i: _member_uuid(i) for i in range(1, 11)}
+
+    store["trainer_assignments"] = [
+        {"id": str(uuid.uuid4()), "gym_id": GYM_ID, "trainer_id": TRAINER_ID, "member_id": m[i], "assigned_date": d(25), "is_active": True}
+        for i in (1, 2, 3, 7)
+    ] + [
+        {"id": str(uuid.uuid4()), "gym_id": GYM_ID, "trainer_id": TRAINER2_ID, "member_id": m[i], "assigned_date": d(25), "is_active": True}
+        for i in (4, 5, 6, 9)
     ]
 
     wp_id = "cccc0001-0000-0000-0000-000000000001"
-    _GLOBAL_STORE["workout_plans"] = [
-        {"id": wp_id, "gym_id": gym_id, "member_id": m1_id, "trainer_id": trainer_id, "title": "Muscle Hypertrophy & Strength", "description": "Push-Pull-Legs 6-day split focusing on progressive overload", "is_active": True}
+    store["workout_plans"] = [
+        {"id": wp_id, "gym_id": GYM_ID, "member_id": m[1], "trainer_id": TRAINER_ID, "title": "Muscle Hypertrophy & Strength", "description": "Push-Pull-Legs split focusing on progressive overload", "is_active": True}
     ]
-
-    _GLOBAL_STORE["workout_exercises"] = [
-        {"id": str(uuid.uuid4()), "plan_id": wp_id, "day_of_week": "Monday", "exercise_name": "Barbell Bench Press", "sets": 4, "reps": "8-10", "rest_seconds": 90, "instructions": "Keep shoulder blades retracted and elbows tucked at 45 degrees", "trainer_notes": "Warm up with 20kg bar first"},
-        {"id": str(uuid.uuid4()), "plan_id": wp_id, "day_of_week": "Monday", "exercise_name": "Incline Dumbbell Press", "sets": 3, "reps": "10-12", "rest_seconds": 60, "instructions": "Full stretch at bottom, squeeze chest at peak", "trainer_notes": "Use 18kg dumbbells"},
-        {"id": str(uuid.uuid4()), "plan_id": wp_id, "day_of_week": "Tuesday", "exercise_name": "Barbell Deadlift", "sets": 4, "reps": "6-8", "rest_seconds": 120, "instructions": "Neutral spine, push through heels", "trainer_notes": "Keep belt tight"},
-        {"id": str(uuid.uuid4()), "plan_id": wp_id, "day_of_week": "Wednesday", "exercise_name": "Barbell Back Squats", "sets": 4, "reps": "8-10", "rest_seconds": 120, "instructions": "Break parallel, drive up explosively", "trainer_notes": "Hit full depth"},
+    exercises = [
+        ("Monday", "Barbell Bench Press", 4, "8-10", 90, "Keep shoulder blades retracted and elbows tucked at 45 degrees", "Warm up with 20kg bar first"),
+        ("Monday", "Incline Dumbbell Press", 3, "10-12", 60, "Full stretch at bottom, squeeze chest at peak", "Use 18kg dumbbells"),
+        ("Monday", "Cable Triceps Pushdown", 3, "12-15", 45, "Elbows pinned to your sides", ""),
+        ("Tuesday", "Barbell Deadlift", 4, "6-8", 120, "Neutral spine, push through heels", "Keep belt tight"),
+        ("Tuesday", "Lat Pulldown", 3, "10-12", 60, "Pull to upper chest, control the return", ""),
+        ("Wednesday", "Barbell Back Squats", 4, "8-10", 120, "Break parallel, drive up explosively", "Hit full depth"),
+        ("Wednesday", "Walking Lunges", 3, "12 each leg", 60, "Knee tracks over toes", ""),
+        ("Friday", "Overhead Press", 4, "8-10", 90, "Brace core, no back arch", ""),
+        ("Friday", "Barbell Rows", 4, "8-10", 90, "Hinge to 45 degrees, pull to belly button", ""),
+    ]
+    store["workout_exercises"] = [
+        {"id": str(uuid.uuid4()), "plan_id": wp_id, "day_of_week": day, "exercise_name": name, "sets": sets,
+         "reps": reps, "rest_seconds": rest, "instructions": instr, "trainer_notes": notes, "order_index": i}
+        for i, (day, name, sets, reps, rest, instr, notes) in enumerate(exercises)
     ]
 
     dp_id = "dddd0001-0000-0000-0000-000000000001"
-    _GLOBAL_STORE["diet_plans"] = [
-        {"id": dp_id, "gym_id": gym_id, "member_id": m1_id, "trainer_id": trainer_id, "title": "High Protein Muscle Building Diet", "notes": "Target 140g protein daily. Drink 3.5L water minimum.", "is_active": True}
+    store["diet_plans"] = [
+        {"id": dp_id, "gym_id": GYM_ID, "member_id": m[1], "trainer_id": TRAINER_ID, "title": "High Protein Muscle Building Diet", "notes": "Target 140g protein daily. Drink 3.5L water minimum.", "is_active": True}
     ]
-
-    _GLOBAL_STORE["diet_meals"] = [
+    store["diet_meals"] = [
         {"id": str(uuid.uuid4()), "diet_plan_id": dp_id, "meal_type": "Breakfast", "food_item": "Oatmeal with Whey Protein & Almonds", "quantity": "60g oats + 1 scoop whey + 10 almonds", "timing": "08:00 AM", "instructions": "Mix with warm water or skimmed milk", "nutrition_notes": "32g Protein, 45g Carbs"},
         {"id": str(uuid.uuid4()), "diet_plan_id": dp_id, "meal_type": "Lunch", "food_item": "Grilled Paneer/Chicken with Brown Rice & Dal", "quantity": "150g Paneer/Chicken + 1 bowl Rice + 1 bowl Dal", "timing": "01:30 PM", "instructions": "Cook in 1 tsp olive oil", "nutrition_notes": "38g Protein, 55g Carbs"},
         {"id": str(uuid.uuid4()), "diet_plan_id": dp_id, "meal_type": "Evening Snacks", "food_item": "Boiled Eggs or Sprouts Salad + Black Coffee", "quantity": "4 egg whites (or 1 bowl sprouts)", "timing": "05:30 PM", "instructions": "Pre-workout energy booster", "nutrition_notes": "15g Protein"},
         {"id": str(uuid.uuid4()), "diet_plan_id": dp_id, "meal_type": "Dinner", "food_item": "Tofu/Soya Chunks with Mixed Vegetable Salad", "quantity": "150g Tofu + Green Salad", "timing": "08:30 PM", "instructions": "Light salt, no carbs after 9 PM", "nutrition_notes": "25g Protein, low carb"},
     ]
 
-    _GLOBAL_STORE["inactivity_followups"] = [
-        {"id": str(uuid.uuid4()), "gym_id": gym_id, "member_id": m7_id, "contacted_by": receptionist_id, "contact_date": str(today - timedelta(days=2)), "channel": "whatsapp", "status": "contacted", "notes": "Member was out of station, will resume Monday"}
+    store["inactivity_followups"] = [
+        {"id": str(uuid.uuid4()), "gym_id": GYM_ID, "member_id": m[7], "contacted_by": RECEPTIONIST_ID, "contact_date": d(2), "channel": "whatsapp", "status": "contacted", "notes": "Member was out of station, will resume Monday"}
     ]
-    _GLOBAL_STORE["renewal_records"] = []
+    store["renewal_records"] = []
+    return store
+
+
+class _Result:
+    def __init__(self, data):
+        self.data = data
+
+
+def _matches(row: Dict[str, Any], filters) -> bool:
+    for ftype, col, val in filters:
+        r_val = row.get(col)
+        if ftype == "eq" and str(r_val) != str(val):
+            return False
+        if ftype == "neq" and str(r_val) == str(val):
+            return False
+        if ftype == "in" and str(r_val) not in [str(v) for v in val]:
+            return False
+        if ftype == "gte" and (r_val is None or str(r_val) < str(val)):
+            return False
+        if ftype == "lte" and (r_val is None or str(r_val) > str(val)):
+            return False
+        if ftype == "ilike" and str(val).replace("%", "").lower() not in str(r_val or "").lower():
+            return False
+    return True
 
 
 class MockQueryBuilder:
-    def __init__(self, table_name: str):
+    """Chainable query builder supporting select / insert / update / delete."""
+
+    def __init__(self, store: Dict[str, List[Dict[str, Any]]], table_name: str):
+        self.store = store
         self.table_name = table_name
         self.filters = []
-        self.select_fields = "*"
         self.order_field = None
         self.order_desc = False
         self.limit_val = None
+        self._mode = "select"
+        self._payload = None
 
     def select(self, fields: str = "*"):
-        self.select_fields = fields
+        self._mode = "select"
         return self
 
     def eq(self, column: str, value: Any):
@@ -195,172 +279,107 @@ class MockQueryBuilder:
         self.limit_val = count
         return self
 
-    def execute(self):
-        _init_seed_data()
-        records = _GLOBAL_STORE.get(self.table_name, [])
-        filtered = []
-
-        for row in records:
-            match = True
-            for ftype, col, val in self.filters:
-                r_val = row.get(col)
-                if ftype == "eq" and str(r_val) != str(val):
-                    match = False
-                    break
-                elif ftype == "neq" and str(r_val) == str(val):
-                    match = False
-                    break
-                elif ftype == "in" and (r_val not in val and str(r_val) not in [str(v) for v in val]):
-                    match = False
-                    break
-                elif ftype == "gte" and (r_val is None or str(r_val) < str(val)):
-                    match = False
-                    break
-                elif ftype == "lte" and (r_val is None or str(r_val) > str(val)):
-                    match = False
-                    break
-                elif ftype == "ilike":
-                    p = str(val).replace("%", "").lower()
-                    if p not in str(r_val or "").lower():
-                        match = False
-                        break
-            if match:
-                filtered.append(copy.deepcopy(row))
-
-        if self.order_field:
-            filtered.sort(
-                key=lambda x: str(x.get(self.order_field, "") or ""),
-                reverse=self.order_desc,
-            )
-
-        if self.limit_val is not None:
-            filtered = filtered[: self.limit_val]
-
-        class QueryResponse:
-            def __init__(self, data):
-                self.data = data
-
-        return QueryResponse(filtered)
-
     def insert(self, payload: Any):
-        _init_seed_data()
-        table_rows = _GLOBAL_STORE.setdefault(self.table_name, [])
-        items = payload if isinstance(payload, list) else [payload]
-        inserted = []
-        for it in items:
-            row = copy.deepcopy(it)
-            if "id" not in row or not row["id"]:
-                row["id"] = str(uuid.uuid4())
-            table_rows.append(row)
-            inserted.append(row)
-
-        class InsertBuilder:
-            def __init__(self, data):
-                self.data = data
-            def execute(self):
-                class R:
-                    def __init__(self, d): self.data = d
-                return R(self.data)
-
-        return InsertBuilder(inserted)
+        self._mode = "insert"
+        self._payload = payload
+        return self
 
     def update(self, payload: Dict[str, Any]):
-        class UpdateBuilder:
-            def __init__(self, tbl, payload, parent_filters):
-                self.tbl = tbl
-                self.payload = payload
-                self.filters = list(parent_filters)
-            def eq(self, column, value):
-                self.filters.append(("eq", column, value))
-                return self
-            def execute(self):
-                _init_seed_data()
-                updated = []
-                for row in _GLOBAL_STORE.get(self.tbl, []):
-                    match = True
-                    for _, col, val in self.filters:
-                        if str(row.get(col)) != str(val):
-                            match = False
-                            break
-                    if match:
-                        row.update(self.payload)
-                        updated.append(copy.deepcopy(row))
-                class R:
-                    def __init__(self, d): self.data = d
-                return R(updated)
-        return UpdateBuilder(self.table_name, payload, self.filters)
+        self._mode = "update"
+        self._payload = payload
+        return self
 
     def delete(self):
-        class DeleteBuilder:
-            def __init__(self, tbl, parent_filters):
-                self.tbl = tbl
-                self.filters = list(parent_filters)
-            def eq(self, column, value):
-                self.filters.append(("eq", column, value))
-                return self
-            def execute(self):
-                _init_seed_data()
-                remaining = []
-                deleted = []
-                for row in _GLOBAL_STORE.get(self.tbl, []):
-                    match = True
-                    for _, col, val in self.filters:
-                        if str(row.get(col)) != str(val):
-                            match = False
-                            break
-                    if match:
-                        deleted.append(row)
-                    else:
-                        remaining.append(row)
-                _GLOBAL_STORE[self.tbl] = remaining
-                class R:
-                    def __init__(self, d): self.data = d
-                return R(deleted)
-        return DeleteBuilder(self.table_name, self.filters)
+        self._mode = "delete"
+        return self
+
+    def execute(self):
+        rows = self.store.setdefault(self.table_name, [])
+
+        if self._mode == "insert":
+            items = self._payload if isinstance(self._payload, list) else [self._payload]
+            inserted = []
+            for it in items:
+                row = copy.deepcopy(it)
+                if not row.get("id"):
+                    row["id"] = str(uuid.uuid4())
+                rows.append(row)
+                inserted.append(copy.deepcopy(row))
+            return _Result(inserted)
+
+        if self._mode == "update":
+            updated = []
+            for row in rows:
+                if _matches(row, self.filters):
+                    row.update(copy.deepcopy(self._payload))
+                    updated.append(copy.deepcopy(row))
+            return _Result(updated)
+
+        if self._mode == "delete":
+            keep, deleted = [], []
+            for row in rows:
+                (deleted if _matches(row, self.filters) else keep).append(row)
+            self.store[self.table_name] = keep
+            return _Result(deleted)
+
+        filtered = [copy.deepcopy(r) for r in rows if _matches(r, self.filters)]
+        if self.order_field:
+            def sort_key(row):
+                v = row.get(self.order_field)
+                if isinstance(v, (int, float)) and not isinstance(v, bool):
+                    return (0, float(v), "")
+                return (1, 0.0, str(v or ""))
+            filtered.sort(key=sort_key, reverse=self.order_desc)
+        if self.limit_val is not None:
+            filtered = filtered[: self.limit_val]
+        return _Result(filtered)
+
+
+class _MockUser:
+    def __init__(self, uid: str, email: str):
+        self.id = uid
+        self.email = email
+
+
+class _MockSession:
+    access_token = "mock-jwt-token"
+
+
+class _MockAuthResponse:
+    def __init__(self, uid: str, email: str):
+        self.user = _MockUser(uid, email)
+        self.session = _MockSession()
 
 
 class MockAuth:
+    def __init__(self, store: Dict[str, List[Dict[str, Any]]]):
+        self.store = store
+
     def sign_in_with_password(self, credentials: Dict[str, str]):
-        _init_seed_data()
-        email = credentials.get("email", "").strip().lower()
-        pwd = credentials.get("password", "")
-
-        # Match profiles
-        for p in _GLOBAL_STORE.get("profiles", []):
-            if p.get("email", "").lower() == email:
-                class Session:
-                    access_token = "mock-jwt-token"
-                class AuthResponse:
-                    def __init__(self, p):
-                        self.user = type("U", (), {"id": p["id"], "email": p["email"]})()
-                        self.session = Session()
-                return AuthResponse(p)
-
-        # Fallback for demo
-        class Session:
-            access_token = "mock-jwt-token"
-        class FallbackAuthResponse:
-            def __init__(self):
-                self.user = type("U", (), {"id": "11111111-1111-1111-1111-111111111111", "email": email})()
-                self.session = Session()
-        return FallbackAuthResponse()
+        email = (credentials.get("email") or "").strip().lower()
+        pwd = credentials.get("password") or ""
+        if DEMO_PASSWORDS.get(email) != pwd or not pwd:
+            raise ValueError("Invalid login credentials")
+        for p in self.store.get("profiles", []):
+            if (p.get("email") or "").lower() == email:
+                return _MockAuthResponse(p["id"], p["email"])
+        raise ValueError("Invalid login credentials")
 
     def sign_out(self):
         return True
 
 
 class MockClient:
+    is_mock = True
+
     def __init__(self):
-        self.auth = MockAuth()
+        self.store = _seed_data()
+        self.auth = MockAuth(self.store)
 
     def table(self, table_name: str):
-        return MockQueryBuilder(table_name)
+        return MockQueryBuilder(self.store, table_name)
 
-
-_LOCAL_DB_INSTANCE = None
 
 def get_local_db() -> MockClient:
-    global _LOCAL_DB_INSTANCE
-    if _LOCAL_DB_INSTANCE is None:
-        _LOCAL_DB_INSTANCE = MockClient()
-    return _LOCAL_DB_INSTANCE
+    """Return a fresh, independently seeded in-memory database."""
+    return MockClient()

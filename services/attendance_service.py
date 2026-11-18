@@ -5,7 +5,7 @@ daily registers, and attendance history analytics.
 """
 
 from __future__ import annotations
-from datetime import date, datetime
+from datetime import date
 from typing import List, Dict, Any, Optional, Tuple
 import uuid
 from utils.security import get_supabase_client

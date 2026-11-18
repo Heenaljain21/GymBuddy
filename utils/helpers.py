@@ -7,7 +7,6 @@ and pagination utilities.
 from __future__ import annotations
 import urllib.parse
 from typing import Any, List, Optional
-import pandas as pd
 from .date_utils import format_date_display
 
 

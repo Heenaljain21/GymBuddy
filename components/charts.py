@@ -43,6 +43,16 @@ def _show(fig: go.Figure) -> None:
     st.plotly_chart(fig, width="stretch", config=CONFIG, theme=None)
 
 
+def _count_axis(layout: Dict[str, Any], df: pd.DataFrame, y: str) -> None:
+    """Counts are whole numbers: no 0.2 / 0.4 ticks when the numbers are small."""
+    top = float(df[y].max()) if not df.empty else 0.0
+    layout["yaxis"]["tickformat"] = ",d"
+    layout["yaxis"]["rangemode"] = "tozero"
+    if top <= 5:
+        layout["yaxis"]["dtick"] = 1
+        layout["yaxis"]["range"] = [0, max(top, 1) * 1.15]
+
+
 def bar_chart(df: pd.DataFrame, x: str, y: str, title: str, money: bool = False, color: str = PURPLE, height: int = 300) -> None:
     fig = go.Figure()
     if not df.empty:
@@ -56,6 +66,8 @@ def bar_chart(df: pd.DataFrame, x: str, y: str, title: str, money: bool = False,
     if money:
         layout["yaxis"]["tickprefix"] = "₹"
         layout["yaxis"]["tickformat"] = ",.0f"
+    else:
+        _count_axis(layout, df, y)
     fig.update_layout(**layout)
     _show(fig)
 
@@ -73,7 +85,7 @@ def line_chart(df: pd.DataFrame, x: str, y: str, title: str, color: str = CYAN, 
         ))
     layout = _layout(title, height)
     _date_axis(layout, df, x)
-    layout["yaxis"]["rangemode"] = "tozero"
+    _count_axis(layout, df, y)
     fig.update_layout(**layout)
     _show(fig)
 

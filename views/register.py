@@ -112,7 +112,7 @@ with st.form("member_registration_form", clear_on_submit=False):
     g1, g2 = a.columns(2)
     gender = g1.selectbox("Gender", ["Male", "Female", "Other"])
     age = g2.number_input("Age", min_value=12, max_value=90, value=25)
-    address = b.text_input("Area / address", placeholder="e.g. Indiranagar, Bengaluru")
+    address = b.text_input("Area / address", placeholder="Area, city")
 
     st.markdown("**Payment**")
     p1, p2, p3 = st.columns(3)

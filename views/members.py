@@ -52,6 +52,11 @@ if trainer_filter == "Unassigned":
 elif trainer_filter != "Any trainer":
     rows = [m for m in rows if trainer_names.get(assignments.get(m["id"])) == trainer_filter]
 
+if not members:
+    empty_state("No members yet", "Register your first member from New member and they'll appear here.", "👥")
+    if st.button("Register a member", icon=":material/person_add:", type="primary"):
+        st.switch_page("views/register.py")
+    st.stop()
 if not rows:
     empty_state("No members match your filters", "Try clearing the search or status filter.", "🔍")
     st.stop()

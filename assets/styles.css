@@ -228,4 +228,7 @@ a.gb-wa:hover { background: rgba(37, 211, 102, 0.22); }
   .gb-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .gb-stat .gb-stat-value { font-size: 1.35rem; }
   .gb-login-title { font-size: 1.9rem; }
+  /* Phones: show the brand, then go straight to the sign-in form. */
+  .gb-login-title, .gb-feature { display: none; }
+  .gb-login-brand { margin-bottom: .4rem; }
 }

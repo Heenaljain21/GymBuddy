@@ -78,7 +78,7 @@ def login_page() -> None:
                 st.error(err or "Invalid email or password.", icon=":material/error:")
 
             with st.expander("Forgot password?"):
-                st.write("Ask your gym owner to reset it, or email **support@gymbuddy.io**.")
+                st.write("Ask your gym owner or admin to send you a reset link. They can do it from Supabase → Authentication → Users → ⋮ → Send password recovery.")
 
         if demo:
             with st.container(border=True):

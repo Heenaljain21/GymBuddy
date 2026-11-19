@@ -12,6 +12,7 @@ import pandas as pd
 import streamlit as st
 
 from components.ui import (
+    unlinked_member_notice,
     ctx, page_header, stat_cards, empty_state, result_banner, expiry_text,
 )
 from components.qr_components import render_member_pass, decode_qr_image
@@ -28,7 +29,7 @@ if c.role == "member":
     page_header("My QR pass", "Show this at the front desk to check in.", eyebrow="Attendance")
     member = get_member(c.gym_id, c.member_id) if c.member_id else None
     if not member:
-        empty_state("Your member profile isn't linked yet", "Ask the front desk to link your account.", "🔗")
+        unlinked_member_notice()
         st.stop()
 
     left, right = st.columns([1, 1.15], gap="large")

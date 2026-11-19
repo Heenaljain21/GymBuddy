@@ -9,7 +9,10 @@ from typing import Optional, Tuple
 
 import streamlit as st
 
-from utils.security import get_supabase_client, SESSION_KEYS
+from utils.security import get_supabase_client, is_demo_mode, SESSION_KEYS, _secret
+from utils.validators import validate_email
+
+MIN_PASSWORD_LENGTH = 8
 
 
 def _first(res) -> dict:
@@ -26,6 +29,8 @@ def sign_in(email: str, password: str) -> Tuple[bool, Optional[str]]:
     try:
         res = client.auth.sign_in_with_password({"email": clean_email, "password": password})
     except Exception as e:
+        if "not confirmed" in str(e).lower():
+            return False, "Please confirm your email first: open the link we sent you, then sign in."
         if "invalid" in str(e).lower() or "credentials" in str(e).lower():
             return False, "Invalid email or password."
         return False, f"Authentication error: {e}"
@@ -68,6 +73,48 @@ def sign_in(email: str, password: str) -> Tuple[bool, Optional[str]]:
     session = getattr(res, "session", None)
     st.session_state["access_token"] = getattr(session, "access_token", None)
     return True, None
+
+
+def sign_up(full_name: str, email: str, password: str, confirm: str) -> Tuple[bool, str]:
+    """Create a member login. Supabase emails a confirmation link; once it is clicked
+    the database links the login to the member record with the same email.
+
+    Returns (ok, message). The message never reveals whether an email is registered.
+    """
+    name = " ".join((full_name or "").split())
+    clean_email = (email or "").strip().lower()
+    if len(name) < 2:
+        return False, "Please enter your full name."
+    if not clean_email or not validate_email(clean_email):
+        return False, "Please enter a valid email address."
+    if len(password or "") < MIN_PASSWORD_LENGTH:
+        return False, f"Use a password of at least {MIN_PASSWORD_LENGTH} characters."
+    if password != confirm:
+        return False, "The two passwords don't match."
+    if is_demo_mode():
+        return False, "Account creation works once the app is connected to your gym's database. In demo mode, use the demo accounts below."
+
+    options = {"data": {"full_name": name}}
+    redirect = _secret("supabase", "site_url")
+    if redirect:
+        options["email_redirect_to"] = redirect
+    try:
+        res = get_supabase_client().auth.sign_up({"email": clean_email, "password": password, "options": options})
+    except Exception as e:
+        msg = str(e).lower()
+        if "rate limit" in msg or "too many" in msg:
+            return False, "Too many sign-ups right now. Please try again in an hour, or ask the front desk for help."
+        if "already registered" in msg or "already exists" in msg:
+            return False, "This email already has an account. Sign in instead, or use “Forgot password?”."
+        if "password" in msg:
+            return False, f"That password isn't accepted: {e}"
+        return False, f"Could not create the account: {e}"
+
+    if getattr(res, "session", None):
+        # Email confirmation is switched off in Supabase: the account is live immediately.
+        return True, "Account created. You can sign in now."
+    return True, (f"Almost done! We've sent a confirmation link to {clean_email}. "
+                  "Open it, then come back here and sign in. Check your spam folder if it doesn't arrive in a few minutes.")
 
 
 def sign_out() -> None:

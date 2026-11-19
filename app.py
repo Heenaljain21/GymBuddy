@@ -24,7 +24,7 @@ st.set_page_config(
 )
 
 from utils.security import init_session_state, is_demo_mode
-from services.auth_service import sign_in, sign_out, is_authenticated
+from services.auth_service import sign_in, sign_up, sign_out, is_authenticated, MIN_PASSWORD_LENGTH
 from components.ui import load_css, html_block, esc, asset_data_uri, show_flashes, initials
 
 init_session_state()
@@ -64,18 +64,33 @@ def login_page() -> None:
     with right:
         st.write("")
         with st.container(border=True):
-            st.subheader("Sign in")
-            st.caption("Staff and members use the same login.")
-            with st.form("login_form", border=False):
-                email = st.text_input("Email", placeholder="you@yourgym.in", autocomplete="email")
-                password = st.text_input("Password", type="password", placeholder="••••••••", autocomplete="current-password")
-                submitted = st.form_submit_button("Sign in", type="primary", width="stretch", icon=":material/login:")
-            if submitted:
-                with st.spinner("Signing you in…"):
-                    ok, err = sign_in(email, password)
-                if ok:
-                    st.rerun()
-                st.error(err or "Invalid email or password.", icon=":material/error:")
+            tab_in, tab_up = st.tabs(["Sign in", "Create account"])
+            with tab_in:
+                st.caption("Staff and members use the same login.")
+                with st.form("login_form", border=False):
+                    email = st.text_input("Email", placeholder="you@yourgym.in", autocomplete="email")
+                    password = st.text_input("Password", type="password", placeholder="••••••••", autocomplete="current-password")
+                    submitted = st.form_submit_button("Sign in", type="primary", width="stretch", icon=":material/login:")
+                if submitted:
+                    with st.spinner("Signing you in…"):
+                        ok, err = sign_in(email, password)
+                    if ok:
+                        st.rerun()
+                    st.error(err or "Invalid email or password.", icon=":material/error:")
+            with tab_up:
+                st.caption("For gym members. Use the **same email you gave the front desk** when you joined, "
+                           "and your account links to your membership automatically.")
+                with st.form("signup_form", border=False, clear_on_submit=False):
+                    su_name = st.text_input("Full name", placeholder="e.g. Rahul Verma", autocomplete="name")
+                    su_email = st.text_input("Email", placeholder="the email registered at your gym", autocomplete="email", key="su_email")
+                    su_pwd = st.text_input("Password", type="password", placeholder=f"At least {MIN_PASSWORD_LENGTH} characters", autocomplete="new-password", key="su_pwd")
+                    su_pwd2 = st.text_input("Confirm password", type="password", placeholder="Type it again", autocomplete="new-password", key="su_pwd2")
+                    su_go = st.form_submit_button("Create account", type="primary", width="stretch", icon=":material/person_add:")
+                if su_go:
+                    with st.spinner("Creating your account…"):
+                        ok, msg = sign_up(su_name, su_email, su_pwd, su_pwd2)
+                    (st.success if ok else st.error)(msg, icon=":material/mark_email_read:" if ok else ":material/error:")
+                st.caption("Not registered at the gym yet? Ask the front desk to add you first. Staff accounts are set up by your gym owner.")
 
             with st.expander("Forgot password?"):
                 st.write("Ask your gym owner or admin to send you a reset link. They can do it from Supabase → Authentication → Users → ⋮ → Send password recovery.")

@@ -6,6 +6,7 @@ from datetime import timedelta
 import streamlit as st
 
 from components.ui import (
+    unlinked_member_notice,
     ctx, page_header, stat_cards, html_block, esc, badge, chip, empty_state, person_row,
     whatsapp_button, expiry_text, greeting,
 )
@@ -131,7 +132,7 @@ def member_home() -> None:
     member = get_member(c.gym_id, c.member_id) if c.member_id else None
     page_header(f"{greeting()}, {c.first_name}", f"Welcome back to {c.gym_name}.", eyebrow="Member")
     if not member:
-        empty_state("Your member profile isn't linked yet", "Ask the front desk to link your account to your membership.", "🔗")
+        unlinked_member_notice()
         return
 
     history = get_member_attendance(c.gym_id, member["id"], limit=120)

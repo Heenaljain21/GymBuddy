@@ -41,6 +41,18 @@ class TestServices(unittest.TestCase):
         ok, _ = sign_in("nobody@example.com", "owner123")
         self.assertFalse(ok)
 
+    def test_sign_up_validation(self):
+        from services.auth_service import sign_up
+        self.assertFalse(sign_up("A", "x@example.com", "longenough", "longenough")[0])
+        self.assertFalse(sign_up("New Member", "not-an-email", "longenough", "longenough")[0])
+        self.assertFalse(sign_up("New Member", "x@example.com", "short", "short")[0])
+        ok, msg = sign_up("New Member", "x@example.com", "longenough", "different1")
+        self.assertFalse(ok)
+        self.assertIn("match", msg)
+        ok, msg = sign_up("New Member", "x@example.com", "longenough", "longenough")
+        self.assertFalse(ok)  # demo mode never creates accounts
+        self.assertIn("demo", msg.lower())
+
     def test_member_login_links_own_member_record(self):
         import streamlit as st
         ok, _ = sign_in("amit@gmail.com", "member123")

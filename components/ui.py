@@ -226,3 +226,14 @@ def require_role(*roles: str) -> None:
         return
     empty_state("You don't have access to this page", "Ask your gym owner if you need it.", "🔒")
     st.stop()
+
+
+def unlinked_member_notice() -> None:
+    """Shown to a member login that isn't attached to a membership yet."""
+    email = (st.session_state.get("user") or {}).get("email") or "your email"
+    empty_state(
+        "Your account isn't linked to a membership yet",
+        f"Ask the front desk to register you (or update your record) with the email {email}. "
+        "It links automatically. Then sign out and sign in again.",
+        "🔗",
+    )

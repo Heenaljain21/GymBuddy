@@ -107,7 +107,7 @@ with st.form("member_registration_form", clear_on_submit=False):
     a, b = st.columns(2)
     full_name = a.text_input("Full name *", placeholder="e.g. Vikram Malhotra")
     phone = b.text_input("Mobile number *", placeholder="10-digit mobile", max_chars=14)
-    email = a.text_input("Email", placeholder="optional")
+    email = a.text_input("Email", placeholder="optional · needed for the member app", help="If the member creates an app account with this same email, it links to this membership automatically.")
     emergency_contact = b.text_input("Emergency contact", placeholder="optional", max_chars=14)
     g1, g2 = a.columns(2)
     gender = g1.selectbox("Gender", ["Male", "Female", "Other"])

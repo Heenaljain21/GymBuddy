@@ -27,6 +27,17 @@ class TestAppSmoke(unittest.TestCase):
                 self.assertFalse(at.exception, [e.value for e in at.exception])
                 self.assertNotIn("Sign in", [b.label for b in at.button])
 
+    def test_create_account_tab_validates_and_is_safe_in_demo_mode(self):
+        at = AppTest.from_file(APP, default_timeout=60).run()
+        self.assertIn("Create account", [t.label for t in at.tabs])
+        at.text_input(key="su_email").input("new.member@example.com")
+        at.text_input(key="su_pwd").input("short")
+        at.text_input(key="su_pwd2").input("short")
+        next(t for t in at.text_input if t.label == "Full name").input("New Member")
+        next(b for b in at.button if b.label == "Create account").click().run()
+        self.assertFalse(at.exception, [e.value for e in at.exception])
+        self.assertTrue(any("at least" in e.value for e in at.error), [e.value for e in at.error])
+
 
 if __name__ == "__main__":
     unittest.main()

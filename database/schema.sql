@@ -248,8 +248,10 @@ $$;
 
 -- ============================================================
 -- Auto-create a profile when someone signs up in Supabase Auth.
--- Pass full_name / role / gym_id in the user's metadata, or edit
--- the profile row afterwards.
+-- Every new login starts as a member with no gym. Role and gym are
+-- never read from sign-up metadata (anyone holding the anon key
+-- could otherwise sign up as an admin); an owner or admin sets them
+-- by editing the profile row afterwards.
 -- ============================================================
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
@@ -259,8 +261,8 @@ BEGIN
         NEW.id,
         COALESCE(NEW.raw_user_meta_data ->> 'full_name', split_part(NEW.email, '@', 1)),
         NEW.email,
-        COALESCE(NEW.raw_user_meta_data ->> 'role', 'member'),
-        NULLIF(NEW.raw_user_meta_data ->> 'gym_id', '')::UUID
+        'member',
+        NULL
     )
     ON CONFLICT (id) DO NOTHING;
     RETURN NEW;
@@ -341,7 +343,8 @@ CREATE POLICY profiles_update_self ON public.profiles FOR UPDATE
     USING (id = auth.uid())
     WITH CHECK (id = auth.uid() AND role = public.current_role_name() AND gym_id IS NOT DISTINCT FROM public.current_gym_id());
 CREATE POLICY profiles_manage ON public.profiles FOR UPDATE
-    USING (public.is_admin() OR public.has_gym_role(gym_id, ARRAY['owner']));
+    USING (public.is_admin() OR public.has_gym_role(gym_id, ARRAY['owner']))
+    WITH CHECK (public.is_admin() OR (public.has_gym_role(gym_id, ARRAY['owner']) AND role <> 'admin'));  -- owners can't mint admins
 
 -- Membership plans ------------------------------------------------------------
 CREATE POLICY plans_read ON public.membership_plans FOR SELECT
